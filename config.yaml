@@ -1,0 +1,148 @@
+# Powered by Mr.ican
+
+log:
+    level: error
+    file: ./mosdns.log
+
+plugins:
+    - tag: hosts
+      type: hosts
+      args:
+        files: ./hosts.txt
+
+    - tag: cache
+      type: cache
+      args:
+        size: 1024
+        lazy_cache_ttl: 86400
+
+    - tag: adlist
+      type: domain_set
+      args:
+        files: ./rules/ad_domain_list.txt
+
+    - tag: china_domain
+      type: domain_set
+      args:
+        files: ./rules/china_domain_list.txt
+
+    - tag: cdncn_domain
+      type: domain_set
+      args:
+        files: ./rules/cdn_domain_list.txt
+
+    - tag: ecs_cn_domain
+      type: domain_set
+      args:
+        files: ./rules/ecs_cn_domain.txt
+
+    - tag: gfwlist
+      type: domain_set
+      args:
+        files: ./rules/gfw_domain_list.txt
+
+    - tag: local_ip
+      type: ip_set
+      args:
+        files: ./rules/china_ip_list.txt
+
+    - tag: gfw_ip
+      type: ip_set
+      args:
+        files: ./rules/gfw_ip_list.txt
+
+    - tag: forward_local
+      type: forward
+      args:
+        upstreams:
+            - addr: https://sm2.doh.pub/dns-query
+              dial_addr: 106.55.91.174:443
+
+    - tag: forward_remote
+      type: forward
+      args:
+        concurrent: 2
+        upstreams:
+            - addr: https://edns.apad.pro:3306/dns-query
+              bootstrap: 119.29.29.29
+            - addr: https://101.101.101.101/dns-query
+
+  # fallback的primary服务器,如果本地上游的应答包含本地 IP。则直接采用本地上游的结果，结束。
+    - tag: local_sequence
+      type: sequence
+      args:
+        - exec: $forward_local
+        #- exec: ttl 60-3600
+        - matches: "resp_ip $local_ip"
+          exec: accept
+        - matches: cname akamaiedge.net akadns.net edgekey.net
+          exec: accept
+        - exec: drop_resp
+
+  # fallback的secondary服务器，否则采用远程上游的结果，结束。
+    - tag: remote_sequence
+      type: sequence
+      args:
+        - exec: prefer_ipv4
+        - exec: $forward_remote
+        #- exec: ttl 300-3600
+        - matches: "!resp_ip $gfw_ip"
+          exec: accept
+
+    - tag: fallback
+      type: fallback
+      args:
+        primary: local_sequence
+        secondary: remote_sequence
+        threshold: 500
+        always_standby: false
+
+    - tag: main_sequence
+      type: sequence
+      args:
+        - exec: $hosts
+        - matches: has_resp
+          exec: accept         # 结束。
+
+        - matches: qtype 12 65
+          exec: reject 0
+
+        - matches: qname $adlist
+          exec: reject 3
+
+        - exec: $cache
+        - matches: has_resp
+          exec: accept
+
+  #      - matches: qname github.com
+  #        exec: ecs 168.95.1.0/22 2001:b000:168::/48       #  ipv6: 2001:b000:168::1
+  #      - exec: $forward_remote
+  #      - exec: ttl 300-3600
+  #      - matches: has_wanted_ans
+  #        exec: accept
+
+        - matches: qname $china_domain $cdncn_domain $ecs_cn_domain
+          exec: $forward_local
+        - matches: has_wanted_ans
+          exec: accept
+
+        - matches: qname $gfwlist
+          exec: prefer_ipv4
+        - exec: ecs 1.2.4.0/24 2001:dc7:1000::/48    #  ipv6: 2001:dc7:1000::1
+        - exec: $forward_remote
+        - matches: has_wanted_ans
+          exec: accept
+
+        - exec: $fallback
+
+    - tag: udp_server
+      type: udp_server
+      args:
+        entry: main_sequence
+        listen: 127.0.0.1:53
+
+    - tag: tcp_server
+      type: tcp_server
+      args:
+        entry: main_sequence
+        listen: 127.0.0.1:53
