@@ -72,10 +72,9 @@ plugins:
       type: sequence
       args:
         - exec: $forward_local
-        #- exec: ttl 60-3600
-        - matches: "resp_ip $local_ip"
-          exec: accept
-        - matches: cname akamaiedge.net akadns.net edgekey.net
+        - matches: 
+          - "resp_ip $local_ip"
+          - "cname akamaiedge.net akadns.net edgekey.net"
           exec: accept
         - exec: drop_resp
 
@@ -85,7 +84,6 @@ plugins:
       args:
         - exec: prefer_ipv4
         - exec: $forward_remote
-        #- exec: ttl 300-3600
         - matches: "!resp_ip $gfw_ip"
           exec: accept
 
@@ -116,7 +114,7 @@ plugins:
 
   #      - matches: qname github.com
   #        exec: ecs 168.95.1.0/22 2001:b000:168::/48       #  ipv6: 2001:b000:168::1
-  #      - exec: $forward_remote
+  #      - exec: forward https://101.101.101.101/dns-query
   #      - exec: ttl 300-3600
   #      - matches: has_wanted_ans
   #        exec: accept
