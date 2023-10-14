@@ -1,7 +1,3 @@
-# GitHub520 Host Start  
-github.com 140.82.113.4 140.82.112.3 140.82.114.3 140.82.114.4 20.27.177.113
-objects.githubusercontent.com 185.199.108.133
-raw.githubusercontent.com 185.199.108.133
 adfurikun.jp 0.0.0.0
 aag.yahooapis.jp 0.0.0.0
 optimus-ads.amap.com 0.0.0.0
