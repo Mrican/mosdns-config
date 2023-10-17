@@ -51,6 +51,11 @@ plugins:
       args:
         files: ./rules/gfw_domain_list.txt
 
+    - tag: geosite_no_cn
+      type: domain_set
+      args:
+        files: ./rules/geosite_no_cn.txt
+
     - tag: local_ip
       type: ip_set
       args:
@@ -86,6 +91,11 @@ plugins:
               dial_addr: 61.160.215.84
             - addr: https://101.101.101.101/dns-query
 
+    - tag: github_sequence
+      type: sequence
+      args:
+        - exec: $github_hosts
+
   # fallback的primary服务器,如果本地上游的应答包含本地 IP。则直接采用本地上游的结果，结束。
     - tag: local_sequence
       type: sequence
@@ -94,11 +104,6 @@ plugins:
         - matches:
           - "!resp_ip $local_ip"
           exec: drop_resp
-
-    - tag: github_sequence
-      type: sequence
-      args:
-        - exec: $github_hosts
 
   # fallback的secondary服务器，否则采用远程上游的结果，结束。
     - tag: remote_sequence
@@ -110,19 +115,21 @@ plugins:
         - matches: "resp_ip $gfw_ip"
           exec: drop_resp
 
+    - tag: noleak_sequence
+      type: sequence
+      args:
+        - exec: prefer_ipv4
+        - exec: ecs 168.95.1.0/24 2001:b000:168::/48
+        - exec: $forward_remote
+        - matches: "resp_ip $local_ip"
+          exec: $forward_local
+
+
     - tag: has_wanted_ans_sequence
       type: sequence
       args:
         - matches: has_wanted_ans
           exec: accept
-
-    - tag: fallback
-      type: fallback
-      args:
-        primary: local_sequence
-        secondary: remote_sequence
-        threshold: 500
-        always_standby: false
 
     - tag: github_fallback
       type: fallback
@@ -131,6 +138,14 @@ plugins:
         secondary: remote_sequence
         threshold: 500
         always_standby: true
+
+    - tag: fallback
+      type: fallback
+      args:
+        primary: noleak_sequence
+        secondary: remote_sequence
+        threshold: 500
+        always_standby: false
 
     - tag: main_sequence
       type: sequence
@@ -154,7 +169,7 @@ plugins:
           exec: $local_sequence
         - exec: jump has_wanted_ans_sequence
 
-        - matches: qname $gfwlist
+        - matches: qname $geosite_no_cn $gfwlist
           exec: $remote_sequence
         - exec: jump has_wanted_ans_sequence
 
