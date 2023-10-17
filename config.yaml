@@ -91,12 +91,6 @@ plugins:
               dial_addr: 61.160.215.84
             - addr: https://101.101.101.101/dns-query
 
-    - tag: github_sequence
-      type: sequence
-      args:
-        - exec: $github_hosts
-
-  # fallback的primary服务器,如果本地上游的应答包含本地 IP。则直接采用本地上游的结果，结束。
     - tag: local_sequence
       type: sequence
       args:
@@ -105,15 +99,10 @@ plugins:
           - "!resp_ip $local_ip"
           exec: drop_resp
 
-  # fallback的secondary服务器，否则采用远程上游的结果，结束。
-    - tag: remote_sequence
+    - tag: github_sequence
       type: sequence
       args:
-        - exec: prefer_ipv4
-        - exec: ecs 168.95.1.0/24 2001:b000:168::/48
-        - exec: $forward_remote
-        - matches: "resp_ip $gfw_ip"
-          exec: drop_resp
+        - exec: $github_hosts
 
     - tag: noleak_sequence
       type: sequence
@@ -124,6 +113,14 @@ plugins:
         - matches: "resp_ip $local_ip"
           exec: $forward_local
 
+    - tag: remote_sequence
+      type: sequence
+      args:
+        - exec: prefer_ipv4
+        - exec: ecs 168.95.1.0/24 2001:b000:168::/48
+        - exec: $forward_remote
+        - matches: "resp_ip $gfw_ip"
+          exec: drop_resp
 
     - tag: has_wanted_ans_sequence
       type: sequence
