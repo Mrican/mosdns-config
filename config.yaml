@@ -10,11 +10,6 @@ plugins:
       args:
         files: ./hosts.txt
 
-    - tag: github_hosts
-      type: hosts
-      args:
-        files: ./github_hosts.txt
-
     - tag: cache
       type: cache
       args:
@@ -25,6 +20,11 @@ plugins:
       type: domain_set
       args:
         files: ./rules/ad_domain_list.txt
+
+    - tag: ad_serverlist
+      type: domain_set
+      args:
+        files: ./rules/serverlist.txt
 
     - tag: local_ptr
       type: domain_set
@@ -66,6 +66,23 @@ plugins:
       args:
         files: ./rules/gfw_ip_list.txt
 
+    - tag: ecs_tw
+      type: ecs_handler
+      args:
+        forward: false        # 是否转发来自下游的 ecs
+        preset: 168.95.1.0    # 发送预设 ecs
+        send: false           # 是否发送 ecs
+        mask4: 24             # ipv4 掩码。默认 24
+        mask6: 48             # ipv6 掩码。默认 48  2001:b000:168::/48
+
+    - tag: rate_limit
+      type: rate_limiter
+      args:
+        qps: 20    # 客户端的请求 qps 限制。默认 20
+        burst: 40  # 突发数。允许客户端瞬间突发请求数。默认 40
+        mask4: 32  # IPv4 网段掩码。来自同网段的请求会被视为来自同一客户端。默认 32
+        mask6: 48  # IPv6 网段掩码。默认 48
+
     - tag: forward_local
       type: forward
       args:
@@ -81,15 +98,9 @@ plugins:
       args:
         concurrent: 2
         upstreams:
-            - addr: quic://pdns.itxe.net
-              dial_addr: 36.156.184.156:853
-            - addr: quic://dns.cooluc.com
-              dial_addr: 119.91.79.88
+            - addr: https://101.101.101.101/dns-query
             - addr: https://doh.apad.pro/dns-query
               bootstrap: 119.29.29.29
-            - addr: https://cn-a.iqiqz.com/dns-query
-              dial_addr: 61.160.215.84
-            - addr: https://101.101.101.101/dns-query
 
     - tag: local_sequence
       type: sequence
@@ -99,16 +110,11 @@ plugins:
           - "!resp_ip $local_ip"
           exec: drop_resp
 
-    - tag: github_sequence
-      type: sequence
-      args:
-        - exec: $github_hosts
-
     - tag: noleak_sequence
       type: sequence
       args:
         - exec: prefer_ipv4
-        - exec: ecs 168.95.1.0/24 2001:b000:168::/48
+        - exec: $ecs_tw
         - exec: $forward_remote
         - matches: "resp_ip $local_ip"
           exec: $forward_local
@@ -117,7 +123,7 @@ plugins:
       type: sequence
       args:
         - exec: prefer_ipv4
-        - exec: ecs 168.95.1.0/24 2001:b000:168::/48
+        - exec: $ecs_tw
         - exec: $forward_remote
         - matches: "resp_ip $gfw_ip"
           exec: drop_resp
@@ -127,14 +133,6 @@ plugins:
       args:
         - matches: has_wanted_ans
           exec: accept
-
-    - tag: github_fallback
-      type: fallback
-      args:
-        primary: github_sequence
-        secondary: remote_sequence
-        threshold: 500
-        always_standby: true
 
     - tag: fallback
       type: fallback
@@ -147,17 +145,18 @@ plugins:
     - tag: main_sequence
       type: sequence
       args:
+        - matches: "!$rate_limit"
+          exec: reject 3
+
         - exec: $hosts
         - exec: jump has_wanted_ans_sequence
 
         - matches: qtype 12 65 255
           exec: reject 0
 
-        - matches: qname github.com
-          exec: $github_fallback
-
         - matches:
             - "!qname $adlist"
+            - "!qname $ad_serverlist"
             - "!qname $local_ptr"
           exec: $cache
         - exec: jump has_wanted_ans_sequence
