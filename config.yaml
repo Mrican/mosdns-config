@@ -90,17 +90,17 @@ plugins:
         upstreams:
             - addr: https://sm2.doh.pub/dns-query
               dial_addr: 106.55.91.174:443
-            - addr: quic://223.5.5.5
-            - addr: 180.184.1.1
+            - addr: https://223.5.5.5/dns-query
+            - addr: tcp://180.184.1.1
+              enable_pipeline: true
 
     - tag: forward_remote
       type: forward
       args:
         concurrent: 2
         upstreams:
-            - addr: https://101.101.101.101/dns-query
-            - addr: https://doh.apad.pro/dns-query
-              bootstrap: 119.29.29.29
+            - addr: https://146.112.41.2/dns-query
+            - addr: tls://76.76.2.11
 
     - tag: local_sequence
       type: sequence
@@ -154,11 +154,9 @@ plugins:
         - matches: qtype 12 65 255
           exec: reject 0
 
-        - matches:
-            - "!qname $adlist"
-            - "!qname $ad_serverlist"
-            - "!qname $local_ptr"
-          exec: $cache
+        - matches: qname $category_ads_all $local_ptr
+          exec: reject 3
+        - exec: $lazy_cache
         - exec: jump has_wanted_ans_sequence
 
         - matches: qname $china_domain $cdncn_domain $ecs_cn_domain
