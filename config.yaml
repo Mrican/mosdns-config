@@ -1,182 +1,189 @@
-# Powered by Mr.ican
-
 log:
-    level: error
-    file: ./mosdns.log
+  level: error
+  file: ./mosdns.log
 
 plugins:
-    - tag: hosts
-      type: hosts
-      args:
-        files: ./hosts.txt
+  - tag: hosts
+    type: hosts
+    args:
+      files: ./rule/hosts.txt
 
-    - tag: cache
-      type: cache
-      args:
-        size: 1024
-        lazy_cache_ttl: 86400
+  - tag: lazy_cache
+    type: cache
+    args:
+      size: 1024
+      lazy_cache_ttl: 86400
 
-    - tag: adlist
-      type: domain_set
-      args:
-        files: ./rules/ad_domain_list.txt
+  - tag: geoip_cn
+    type: ip_set
+    args:
+      files: ./rule/geoip_cn.txt
 
-    - tag: ad_serverlist
-      type: domain_set
-      args:
-        files: ./rules/serverlist.txt
+  - tag: gfw_ip
+    type: ip_set
+    args:
+      files: ./rule/gfw_ip.txt
 
-    - tag: local_ptr
-      type: domain_set
-      args:
-        files: ./rules/local-ptr.txt
+  - tag: geosite_cn
+    type: domain_set
+    args:
+      files: ./rule/geosite_cn.txt
 
-    - tag: china_domain
-      type: domain_set
-      args:
-        files: ./rules/china_domain_list.txt
+  - tag: geosite_no_cn
+    type: domain_set
+    args:
+      files: ./rule/geosite_geolocation-!cn.txt
 
-    - tag: cdncn_domain
-      type: domain_set
-      args:
-        files: ./rules/cdn_domain_list.txt
+  - tag: category_ads_all
+    type: domain_set
+    args:
+      files: ./rule/geosite_category-ads-all.txt
 
-    - tag: ecs_cn_domain
-      type: domain_set
-      args:
-        files: ./rules/ecs_cn_domain.txt
+  - tag: win_spy
+    type: domain_set
+    args:
+      files: ./rule/geosite_win-spy.txt
 
-    - tag: gfwlist
-      type: domain_set
-      args:
-        files: ./rules/gfw_domain_list.txt
+  - tag: win_update
+    type: domain_set
+    args:
+      files: ./rule/geosite_win-update.txt
 
-    - tag: geosite_no_cn
-      type: domain_set
-      args:
-        files: ./rules/geosite_no_cn.txt
+  - tag: win_extra
+    type: domain_set
+    args:
+      files: ./rule/geosite_win-extra.txt
 
-    - tag: local_ip
-      type: ip_set
-      args:
-        files: ./rules/china_ip_list.txt
+  - tag: local_ptr
+    type: domain_set
+    args:
+      files: ./rule/local-ptr.txt
 
-    - tag: gfw_ip
-      type: ip_set
-      args:
-        files: ./rules/gfw_ip_list.txt
+  - tag: ecs_hk
+    type: ecs_handler
+    args:
+      forward: false
+      preset: 203.142.100.0
+      send: false
+      mask4: 24
+      mask6: 48
 
-    - tag: ecs_tw
-      type: ecs_handler
-      args:
-        forward: false        # 是否转发来自下游的 ecs
-        preset: 168.95.1.0    # 发送预设 ecs
-        send: false           # 是否发送 ecs
-        mask4: 24             # ipv4 掩码。默认 24
-        mask6: 48             # ipv6 掩码。默认 48  2001:b000:168::/48
+  - tag: rate_limit
+    type: rate_limiter
+    args:
+      qps: 20
+      burst: 40
+      mask4: 32
+      mask6: 48
 
-    - tag: rate_limit
-      type: rate_limiter
-      args:
-        qps: 20    # 客户端的请求 qps 限制。默认 20
-        burst: 40  # 突发数。允许客户端瞬间突发请求数。默认 40
-        mask4: 32  # IPv4 网段掩码。来自同网段的请求会被视为来自同一客户端。默认 32
-        mask6: 48  # IPv6 网段掩码。默认 48
+  - tag: forward_local
+    type: forward
+    args:
+      concurrent: 3
+      upstreams:
+          - addr: https://sm2.doh.pub/dns-query
+            dial_addr: 106.55.91.174:443
+          - addr: https://223.5.5.5/dns-query
+          - addr: tcp://180.184.1.1
+            enable_pipeline: true
 
-    - tag: forward_local
-      type: forward
-      args:
-        concurrent: 3
-        upstreams:
-            - addr: https://sm2.doh.pub/dns-query
-              dial_addr: 106.55.91.174:443
-            - addr: https://223.5.5.5/dns-query
-            - addr: tcp://180.184.1.1
-              enable_pipeline: true
+  - tag: forward_remote
+    type: forward
+    args:
+      concurrent: 3
+      upstreams:
+          - addr: https://146.112.41.2/dns-query
+          - addr: tls://76.76.2.11
+            enable_pipeline: true
+          - addr: https://mosdns.apad.pro/api-query
+            dial_addr: 117.50.76.202:443
+          
+  - tag: local_sequence
+    type: sequence
+    args:
+      - exec: $forward_local
+      - matches: "!resp_ip $geoip_cn"
+        exec: drop_resp
 
-    - tag: forward_remote
-      type: forward
-      args:
-        concurrent: 2
-        upstreams:
-            - addr: https://146.112.41.2/dns-query
-            - addr: tls://76.76.2.11
+  - tag: remote_sequence
+    type: sequence
+    args:
+      - exec: prefer_ipv4
+      - exec: $ecs_hk
+      - exec: $forward_remote
+      - matches: "resp_ip $gfw_ip"
+        exec: drop_resp
 
-    - tag: local_sequence
-      type: sequence
-      args:
-        - exec: $forward_local
-        - matches:
-          - "!resp_ip $local_ip"
-          exec: drop_resp
+  - tag: noleak_sequence
+    type: sequence
+    args:
+      - exec: $remote_sequence
+      - matches: "resp_ip $geoip_cn"
+        exec: $local_sequence
 
-    - tag: noleak_sequence
-      type: sequence
-      args:
-        - exec: prefer_ipv4
-        - exec: $ecs_tw
-        - exec: $forward_remote
-        - matches: "resp_ip $local_ip"
-          exec: $forward_local
+  - tag: cn_fallback
+    type: fallback
+    args:
+      primary: local_sequence
+      secondary: remote_sequence
+      threshold: 1000
+      always_standby: false
 
-    - tag: remote_sequence
-      type: sequence
-      args:
-        - exec: prefer_ipv4
-        - exec: $ecs_tw
-        - exec: $forward_remote
-        - matches: "resp_ip $gfw_ip"
-          exec: drop_resp
+  - tag: query_is_local_domain
+    type: sequence
+    args:
+      - matches: qname $geosite_cn
+        exec: $cn_fallback
 
-    - tag: has_wanted_ans_sequence
-      type: sequence
-      args:
-        - matches: has_wanted_ans
-          exec: accept
+  - tag: query_is_no_local_domain
+    type: sequence
+    args:
+      - matches: qname $geosite_no_cn
+        exec: $remote_sequence
 
-    - tag: fallback
-      type: fallback
-      args:
-        primary: noleak_sequence
-        secondary: remote_sequence
-        threshold: 500
-        always_standby: false
+  - tag: has_wanted_ans_sequence
+    type: sequence
+    args:
+      - matches: has_wanted_ans
+        exec: accept
 
-    - tag: main_sequence
-      type: sequence
-      args:
-        - matches: "!$rate_limit"
-          exec: reject 3
+  - tag: fallback
+    type: fallback
+    args:
+      primary: noleak_sequence
+      secondary: remote_sequence
+      threshold: 500
+      always_standby: false
 
-        - exec: $hosts
-        - exec: jump has_wanted_ans_sequence
+  - tag: main_sequence
+    type: sequence
+    args:
+      - matches: "!$rate_limit"
+        exec: reject 3       
+      - exec: $hosts
+      - exec: jump has_wanted_ans_sequence
+      - matches: qtype 12 65 255
+        exec: reject 0
+      - matches: qname $win_spy $win_update $win_extra
+        exec: reject 3
+      - matches: qname $category_ads_all $local_ptr
+        exec: reject 3
+      - exec: $lazy_cache
+      - exec: jump has_wanted_ans_sequence
+      - exec: $query_is_local_domain
+      - exec: jump has_wanted_ans_sequence
+      - exec: $query_is_no_local_domain
+      - exec: jump has_wanted_ans_sequence
+      - exec: $fallback
 
-        - matches: qtype 12 65 255
-          exec: reject 0
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: main_sequence
+      listen: "127.0.0.1:53"
 
-        - matches: qname $category_ads_all $local_ptr
-          exec: reject 3
-        - exec: $lazy_cache
-        - exec: jump has_wanted_ans_sequence
-
-        - matches: qname $china_domain $cdncn_domain $ecs_cn_domain
-          exec: $local_sequence
-        - exec: jump has_wanted_ans_sequence
-
-        - matches: qname $geosite_no_cn $gfwlist
-          exec: $remote_sequence
-        - exec: jump has_wanted_ans_sequence
-
-        - exec: $fallback
-
-    - tag: udp_server
-      type: udp_server
-      args:
-        entry: main_sequence
-        listen: 127.0.0.1:53
-
-    - tag: tcp_server
-      type: tcp_server
-      args:
-        entry: main_sequence
-        listen: 127.0.0.1:53
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: main_sequence
+      listen: "127.0.0.1:53"
