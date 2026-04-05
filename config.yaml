@@ -138,14 +138,6 @@ plugins:
       - matches: has_wanted_ans
         exec: accept
 
-  - tag: fallback
-    type: fallback
-    args:
-      primary: noleak_sequence
-      secondary: remote_sequence
-      threshold: 500
-      always_standby: false
-
   - tag: main_sequence
     type: sequence
     args:
