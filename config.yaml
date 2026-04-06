@@ -115,10 +115,10 @@ plugins:
       - exec: prefer_ipv4
       - exec: $ecs_hk
       - exec: $forward_remote
-      - matches: "resp_ip $geoip_cn"
-        exec: $forward_local
       - matches: "resp_ip $gfw_ip"
         exec: drop_resp
+      - matches: "resp_ip $geoip_cn"
+        exec: $forward_local
 
   - tag: query_is_local_domain
     type: sequence
