@@ -68,6 +68,40 @@ plugins:
       mask4: 24
       mask6: 48
 
+  - tag: type_sequence
+    type: sequence
+    args:
+      - matches: qtype 12
+        exec: mark 1
+      - matches: qtype 65
+        exec: mark 1
+      - matches: qtype 255
+        exec: mark 1
+      - matches: mark 1
+        exec: reject 0
+
+  - tag: win_sequence
+    type: sequence
+    args:
+      - matches: qname $win_spy
+        exec: mark 2
+      - matches: qname $win_update
+        exec: mark 2
+      - matches: qname $win_extra
+        exec: mark 2
+      - matches: mark 2
+        exec: reject 3
+        
+  - tag: ads_sequence
+    type: sequence
+    args:
+      - matches: qname $category_ads_all
+        exec: mark 3
+      - matches: qname $local_ptr
+        exec: mark 3
+      - matches: mark 3
+        exec: reject 3
+
   - tag: rate_limit
     type: rate_limiter
     args:
@@ -76,7 +110,7 @@ plugins:
       mask4: 32
       mask6: 48
 
- - tag: forward_local
+  - tag: forward_local
     type: forward
     args:
       concurrent: 3
@@ -90,25 +124,28 @@ plugins:
   - tag: forward_remote
     type: forward
     args:
-      concurrent: 3
+      concurrent: 2
       upstreams:
           - addr: https://146.112.41.2/dns-query
           - addr: tls://76.76.2.11
             enable_pipeline: true
+            
+  - tag: forward_easymosdns
+    type: forward
+    args:
+      upstreams:
           - addr: https://mosdns.apad.pro/api-query
             bootstrap: 119.29.29.29
-          
+
   - tag: local_sequence
     type: sequence
     args:
       - exec: $forward_local
-      - matches: "!resp_ip $geoip_cn"
-        exec: prefer_ipv4
-      - exec: $ecs_hk
-      - exec: $forward_remote
       - matches: "resp_ip $gfw_ip"
-        exec: drop_resp
-
+        exec: "black_hole 0.0.0.0 ::"
+      - matches: "resp_ip $geoip_cn"
+        exec: accept
+        
   - tag: remote_sequence
     type: sequence
     args:
@@ -116,21 +153,16 @@ plugins:
       - exec: $ecs_hk
       - exec: $forward_remote
       - matches: "resp_ip $gfw_ip"
-        exec: drop_resp
-      - matches: "resp_ip $geoip_cn"
-        exec: $forward_local
-
-  - tag: query_is_local_domain
+        exec: "black_hole 0.0.0.0 ::"
+        
+  - tag: easymosdns_sequence
     type: sequence
     args:
-      - matches: qname $geosite_cn
-        exec: $local_sequence
-
-  - tag: query_is_no_local_domain
-    type: sequence
-    args:
-      - matches: qname $geosite_no_cn
-        exec: $remote_sequence
+      - exec: prefer_ipv4
+      - exec: $ecs_hk
+      - exec: $forward_easymosdns
+      - matches: "resp_ip $gfw_ip"
+        exec: "black_hole 0.0.0.0 ::"
 
   - tag: has_wanted_ans_sequence
     type: sequence
@@ -138,35 +170,39 @@ plugins:
       - matches: has_wanted_ans
         exec: accept
 
+  - tag: fallback
+    type: fallback
+    args:
+      primary: easymosdns_sequence
+      secondary: remote_sequence
+      threshold: 500
+      always_standby: false
+
   - tag: main_sequence
     type: sequence
     args:
       - matches: "!$rate_limit"
-        exec: reject 3       
+        exec: reject 3
       - exec: $hosts
       - exec: jump has_wanted_ans_sequence
-      - matches: qtype 12 65 255
-        exec: reject 0
-      - matches: qname $win_spy $win_update $win_extra
-        exec: reject 3
-      - matches: qname $category_ads_all $local_ptr
-        exec: reject 3
       - exec: $lazy_cache
-      - exec: jump has_wanted_ans_sequence
-      - exec: $query_is_local_domain
-      - exec: jump has_wanted_ans_sequence
-      - exec: $query_is_no_local_domain
-      - exec: jump has_wanted_ans_sequence
-      - exec: $remote_sequence
+      - exec: jump type_sequence
+      - exec: jump win_sequence
+      - exec: jump ads_sequence
+      - matches: qname $geosite_cn
+        exec: goto local_sequence
+      - matches: qname $geosite_no_cn
+        exec: goto remote_sequence
+      - exec: $fallback
 
   - tag: udp_server
     type: udp_server
     args:
       entry: main_sequence
-      listen: "127.0.0.1:53"
+      listen: ":53"
 
   - tag: tcp_server
     type: tcp_server
     args:
       entry: main_sequence
-      listen: "127.0.0.1:53"
+      listen: ":53"
