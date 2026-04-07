@@ -141,8 +141,6 @@ plugins:
     type: sequence
     args:
       - exec: $forward_local
-      - matches: "resp_ip $gfw_ip"
-        exec: "black_hole 0.0.0.0 ::"
       - matches: "resp_ip $geoip_cn"
         exec: accept
         
@@ -152,8 +150,8 @@ plugins:
       - exec: prefer_ipv4
       - exec: $ecs_hk
       - exec: $forward_remote
-      - matches: "resp_ip $gfw_ip"
-        exec: "black_hole 0.0.0.0 ::"
+      - matches: "!resp_ip $gfw_ip"
+        exec: accept
         
   - tag: easymosdns_sequence
     type: sequence
@@ -161,8 +159,8 @@ plugins:
       - exec: prefer_ipv4
       - exec: $ecs_hk
       - exec: $forward_easymosdns
-      - matches: "resp_ip $gfw_ip"
-        exec: "black_hole 0.0.0.0 ::"
+      - matches: "!resp_ip $gfw_ip"
+        exec: accept
 
   - tag: has_wanted_ans_sequence
     type: sequence
@@ -190,7 +188,7 @@ plugins:
       - exec: jump win_sequence
       - exec: jump ads_sequence
       - matches: qname $geosite_cn
-        exec: goto local_sequence
+        exec: jump local_sequence
       - matches: qname $geosite_no_cn
         exec: goto remote_sequence
       - exec: $fallback
