@@ -59,7 +59,7 @@ plugins:
     args:
       files: ./rule/local-ptr.txt
 
-  - tag: ecs_hk
+   - tag: ecs_hk
     type: ecs_handler
     args:
       forward: false
@@ -68,38 +68,19 @@ plugins:
       mask4: 24
       mask6: 48
 
-  - tag: type_sequence
+  - tag: block_seq
     type: sequence
     args:
-      - matches: qtype 12
-        exec: mark 1
-      - matches: qtype 65
-        exec: mark 1
-      - matches: qtype 255
-        exec: mark 1
-      - matches: mark 1
+      - matches: qtype 12 28 65 255
         exec: reject 0
-
-  - tag: win_sequence
-    type: sequence
-    args:
-      - matches: qname $win_spy
-        exec: mark 2
-      - matches: qname $win_update
-        exec: mark 2
-      - matches: qname $win_extra
-        exec: mark 2
-      - matches: mark 2
+      - matches: 
+        - qname $win_spy
+        - qname $win_update
+        - qname $win_extra
         exec: reject 3
-        
-  - tag: ads_sequence
-    type: sequence
-    args:
-      - matches: qname $category_ads_all
-        exec: mark 3
-      - matches: qname $local_ptr
-        exec: mark 3
-      - matches: mark 3
+      - matches: 
+        - qname $category_ads_all
+        - qname $local_ptr
         exec: reject 3
 
   - tag: rate_limit
@@ -129,7 +110,7 @@ plugins:
           - addr: https://146.112.41.2/dns-query
           - addr: tls://76.76.2.11
             enable_pipeline: true
-            
+
   - tag: forward_easymosdns
     type: forward
     args:
@@ -137,23 +118,25 @@ plugins:
           - addr: https://mosdns.apad.pro/api-query
             bootstrap: 119.29.29.29
 
-  - tag: local_sequence
+  - tag: local_seq
     type: sequence
     args:
       - exec: $forward_local
       - matches: "resp_ip $geoip_cn"
         exec: accept
-        
-  - tag: remote_sequence
+
+  - tag: remote_seq
     type: sequence
     args:
       - exec: prefer_ipv4
       - exec: $ecs_hk
       - exec: $forward_remote
-      - matches: "!resp_ip $gfw_ip"
+      - matches: "resp_ip $gfw_ip"
+        exec: "black_hole 0.0.0.0 ::"  
+      - matches: "!resp_ip $geoip_cn"
         exec: accept
         
-  - tag: easymosdns_sequence
+  - tag: easymosdns_seq
     type: sequence
     args:
       - exec: prefer_ipv4
@@ -162,17 +145,11 @@ plugins:
       - matches: "!resp_ip $gfw_ip"
         exec: accept
 
-  - tag: has_wanted_ans_sequence
-    type: sequence
-    args:
-      - matches: has_wanted_ans
-        exec: accept
-
   - tag: fallback
     type: fallback
     args:
-      primary: easymosdns_sequence
-      secondary: remote_sequence
+      primary: easymosdns_seq
+      secondary: remote_seq
       threshold: 500
       always_standby: false
 
@@ -182,15 +159,16 @@ plugins:
       - matches: "!$rate_limit"
         exec: reject 3
       - exec: $hosts
-      - exec: jump has_wanted_ans_sequence
+      - matches: has_resp
+        exec: accept
       - exec: $lazy_cache
-      - exec: jump type_sequence
-      - exec: jump win_sequence
-      - exec: jump ads_sequence
+      - matches: has_resp
+        exec: accept
+      - exec: jump block_seq
       - matches: qname $geosite_cn
-        exec: jump local_sequence
+        exec: jump local_seq
       - matches: qname $geosite_no_cn
-        exec: goto remote_sequence
+        exec: goto remote_seq
       - exec: $fallback
 
   - tag: udp_server
