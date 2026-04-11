@@ -74,7 +74,7 @@ plugins:
   - tag: block_seq
     type: sequence
     args:
-      - matches: qtype 28 65 255
+      - matches: qtype 65 255
         exec: reject 0
       - matches:     
         - "qname $win_spy"
