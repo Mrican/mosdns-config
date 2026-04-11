@@ -54,12 +54,7 @@ plugins:
     args:
       files: ./rule/geosite_win-extra.txt
 
-  - tag: local_ptr
-    type: domain_set
-    args:
-      files: ./rule/local-ptr.txt
-
-   - tag: ecs_hk
+  - tag: ecs_hk
     type: ecs_handler
     args:
       forward: false
@@ -68,21 +63,6 @@ plugins:
       mask4: 24
       mask6: 48
 
-  - tag: block_seq
-    type: sequence
-    args:
-      - matches: qtype 12 28 65 255
-        exec: reject 0
-      - matches: 
-        - qname $win_spy
-        - qname $win_update
-        - qname $win_extra
-        exec: reject 3
-      - matches: 
-        - qname $category_ads_all
-        - qname $local_ptr
-        exec: reject 3
-
   - tag: rate_limit
     type: rate_limiter
     args:
@@ -90,6 +70,18 @@ plugins:
       burst: 40
       mask4: 32
       mask6: 48
+
+  - tag: block_seq
+    type: sequence
+    args:
+      - matches: qtype 28 65 255
+        exec: reject 0
+      - matches:     
+        - "qname $win_spy"
+        - "qname $win_update"
+        - "qname $win_extra"
+        - "qname $category_ads_all"
+        exec: reject 3
 
   - tag: forward_local
     type: forward
@@ -116,7 +108,7 @@ plugins:
     args:
       upstreams:
           - addr: https://mosdns.apad.pro/api-query
-            bootstrap: 119.29.29.29
+            bootstrap: 208.67.222.123
 
   - tag: local_seq
     type: sequence
@@ -124,6 +116,7 @@ plugins:
       - exec: $forward_local
       - matches: "resp_ip $geoip_cn"
         exec: accept
+      - exec: "ttl 600"
 
   - tag: remote_seq
     type: sequence
@@ -132,10 +125,11 @@ plugins:
       - exec: $ecs_hk
       - exec: $forward_remote
       - matches: "resp_ip $gfw_ip"
-        exec: "black_hole 0.0.0.0 ::"  
+        exec: reject  # "black_hole 0.0.0.0 ::" 
       - matches: "!resp_ip $geoip_cn"
         exec: accept
-        
+      - exec: "ttl 300"
+      
   - tag: easymosdns_seq
     type: sequence
     args:
@@ -144,6 +138,7 @@ plugins:
       - exec: $forward_easymosdns
       - matches: "!resp_ip $gfw_ip"
         exec: accept
+      - exec: "ttl 60"
 
   - tag: fallback
     type: fallback
@@ -161,13 +156,13 @@ plugins:
       - exec: $hosts
       - matches: has_resp
         exec: accept
+      - exec: jump block_seq
       - exec: $lazy_cache
       - matches: has_resp
         exec: accept
-      - exec: jump block_seq
-      - matches: qname $geosite_cn
+      - matches: "qname $geosite_cn"
         exec: jump local_seq
-      - matches: qname $geosite_no_cn
+      - matches: "qname $geosite_no_cn"
         exec: goto remote_seq
       - exec: $fallback
 
